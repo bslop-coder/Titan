@@ -21,7 +21,13 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags("-std=c++17")
-                arguments("-DSD_VULKAN=ON", "-DANDROID_STL=c++_shared")
+                arguments(
+                    "-DSD_VULKAN=ON",
+                    "-DSD_WEBP=OFF",
+                    "-DSD_USE_SYSTEM_WEBP=ON",
+                    "-DSD_BUILD_EXAMPLES=OFF",
+                    "-DANDROID_STL=c++_shared"
+                )
             }
         }
     }
@@ -29,7 +35,6 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signs with debug key so APK installs directly without custom keystores
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -66,6 +71,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.05.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 }
