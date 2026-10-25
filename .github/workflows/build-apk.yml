@@ -38,9 +38,9 @@ jobs:
       - name: Fetch stable-diffusion.cpp submodule
         run: |
           git clone --recursive https://github.com/leejet/stable-diffusion.cpp app/src/main/cpp/sdcpp
-          echo "### C++ API Signature in Header" >> $GITHUB_STEP_SUMMARY
+          echo "### sd_image_generation_result Definition in Header" >> $GITHUB_STEP_SUMMARY
           echo '```c' >> $GITHUB_STEP_SUMMARY
-          grep -n -C 2 "generate_image" app/src/main/cpp/sdcpp/include/stable-diffusion.h >> $GITHUB_STEP_SUMMARY || true
+          grep -n -C 6 "sd_image_generation_result" app/src/main/cpp/sdcpp/include/stable-diffusion.h >> $GITHUB_STEP_SUMMARY || true
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Compile Titan APK
@@ -49,9 +49,15 @@ jobs:
           gradle assembleRelease --no-daemon 2>&1 | tee build.log
           EXIT_CODE=${PIPESTATUS[0]}
           if [ $EXIT_CODE -ne 0 ]; then
-            echo "### ❌ Build Error & Compiler Notes" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ Build Error & Compiler Diagnostics" >> $GITHUB_STEP_SUMMARY
             echo '```text' >> $GITHUB_STEP_SUMMARY
-            awk '/\* What went wrong:/,/\* Try:/ { if (!/\* Try:/ && !/^[[:space:]]*at /) print }' build.log | head -n 35 >> $GITHUB_STEP_SUMMARY
+            if grep -q "FAILED:" build.log; then
+              grep -B 2 -A 30 "FAILED:" build.log | head -n 35 >> $GITHUB_STEP_SUMMARY
+            elif grep -q "error:" build.log; then
+              grep -B 2 -A 30 "error:" build.log | head -n 35 >> $GITHUB_STEP_SUMMARY
+            else
+              tail -n 35 build.log >> $GITHUB_STEP_SUMMARY
+            fi
             echo '```' >> $GITHUB_STEP_SUMMARY
             exit $EXIT_CODE
           fi
