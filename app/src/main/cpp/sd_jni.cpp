@@ -119,13 +119,24 @@ Java_com_titan_sd_EngineService_runGeneration(
     gen_params.sample_params.sample_method = EULER_SAMPLE_METHOD;
     gen_params.seed = -1;
 
-    sd_image_t* result = generate_image(ctx, &gen_params);
+    sd_image_t* images_out = nullptr;
+    int num_images_out = 0;
     bool success = false;
-    if (result && result->data) {
-        save_bmp(out_path, result->width, result->height, result->channel, result->data);
-        free(result->data);
-        free(result);
-        success = true;
+
+    if (generate_image(ctx, &gen_params, &images_out, &num_images_out)) {
+        if (num_images_out > 0 && images_out && images_out[0].data) {
+            save_bmp(out_path, images_out[0].width, images_out[0].height, images_out[0].channel, images_out[0].data);
+            success = true;
+        }
+    }
+
+    if (images_out) {
+        for (int i = 0; i < num_images_out; i++) {
+            if (images_out[i].data) {
+                free(images_out[i].data);
+            }
+        }
+        free(images_out);
     }
 
     free_sd_ctx(ctx);
