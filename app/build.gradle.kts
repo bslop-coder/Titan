@@ -27,7 +27,10 @@ android {
                     "-DSD_WEBM=OFF",
                     "-DSD_USE_SYSTEM_WEBP=ON",
                     "-DSD_BUILD_EXAMPLES=OFF",
-                    "-DANDROID_STL=c++_shared"
+                    "-DANDROID_STL=c++_shared",
+                    "-DSPIRV-Headers_DIR=/tmp/spirv-headers/install/share/cmake/SPIRV-Headers",
+                    "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH",
+                    "-DVulkan_INCLUDE_DIR=/tmp/vulkan-headers/include"
                 )
             }
         }

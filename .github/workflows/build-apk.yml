@@ -12,10 +12,14 @@ jobs:
       - name: Checkout Titan Source
         uses: actions/checkout@v4
 
-      - name: Install Vulkan Build Tools
+      - name: Install Vulkan Tools and Khronos Headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvulkan-dev glslc spirv-headers
+          sudo apt-get install -y libvulkan-dev glslc spirv-headers ninja-build
+          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/vulkan-headers
+          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/spirv-headers
+          cmake -S /tmp/spirv-headers -B /tmp/spirv-headers/build -DCMAKE_INSTALL_PREFIX=/tmp/spirv-headers/install
+          cmake --install /tmp/spirv-headers/build
 
       - name: Set up Java 17
         uses: actions/setup-java@v4

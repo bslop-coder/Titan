@@ -15,6 +15,15 @@ if (GLSLC_EXECUTABLE)
     set(Vulkan_GLSLC_EXECUTABLE "${GLSLC_EXECUTABLE}" CACHE FILEPATH "" FORCE)
 endif()
 
+if (EXISTS "/tmp/spirv-headers/install/share/cmake/SPIRV-Headers")
+    set(SPIRV-Headers_DIR "/tmp/spirv-headers/install/share/cmake/SPIRV-Headers" CACHE PATH "" FORCE)
+endif()
+
+if (EXISTS "/tmp/vulkan-headers/include")
+    include_directories(SYSTEM "/tmp/vulkan-headers/include")
+    set(Vulkan_INCLUDE_DIR "/tmp/vulkan-headers/include" CACHE PATH "" FORCE)
+endif()
+
 add_subdirectory(sdcpp)
 
 add_library(titan_jni SHARED
