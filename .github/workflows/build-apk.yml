@@ -41,18 +41,10 @@ jobs:
           gradle assembleRelease --no-daemon 2>&1 | tee build.log
           EXIT_CODE=${PIPESTATUS[0]}
           if [ $EXIT_CODE -ne 0 ]; then
-            python3 -c '
-import sys, re
-try:
-    with open("build.log", "r") as f:
-        log = f.read()
-    match = re.search(r"(\* What went wrong:[\s\S]*?)(\* Try:|$)", log)
-    summary = match.group(1).strip() if match else "Check build logs."
-    with open(sys.argv[1], "a") as out:
-        out.write("### ❌ Build Error Summary\n```text\n" + summary[:1500] + "\n```\n")
-except Exception:
-    pass
-' "$GITHUB_STEP_SUMMARY"
+            echo "### ❌ Build Error Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            awk '/\* What went wrong:/,/\* Try:/ { if (!/\* Try:/) print }' build.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
             exit $EXIT_CODE
           fi
 
