@@ -31,7 +31,17 @@ jobs:
           git clone --recursive https://github.com/leejet/stable-diffusion.cpp app/src/main/cpp/sdcpp
 
       - name: Compile Titan APK
-        run: gradle assembleRelease --no-daemon
+        run: |
+          set +e
+          gradle assembleRelease --no-daemon 2>&1 | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "### ❌ Build Error Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            sed -n '/\* What went wrong:/,/^\* Try:/p' build.log | grep -v '^\* Try:' | head -n 12 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit $EXIT_CODE
+          fi
 
       - name: Upload Titan APK
         uses: actions/upload-artifact@v4
