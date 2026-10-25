@@ -24,6 +24,7 @@ android {
                 arguments(
                     "-DSD_VULKAN=ON",
                     "-DSD_WEBP=OFF",
+                    "-DSD_WEBM=OFF",
                     "-DSD_USE_SYSTEM_WEBP=ON",
                     "-DSD_BUILD_EXAMPLES=OFF",
                     "-DANDROID_STL=c++_shared"

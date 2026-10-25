@@ -43,7 +43,7 @@ jobs:
           if [ $EXIT_CODE -ne 0 ]; then
             echo "### ❌ Build Error Summary" >> $GITHUB_STEP_SUMMARY
             echo '```text' >> $GITHUB_STEP_SUMMARY
-            awk '/\* What went wrong:/,/\* Try:/ { if (!/\* Try:/) print }' build.log >> $GITHUB_STEP_SUMMARY
+            awk '/\* What went wrong:/,/\* Try:/ { if (!/\* Try:/ && !/^[[:space:]]*at /) print }' build.log | grep -E "Error|error|failed|What went wrong" | head -n 10 >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             exit $EXIT_CODE
           fi
