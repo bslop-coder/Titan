@@ -38,6 +38,10 @@ jobs:
       - name: Fetch stable-diffusion.cpp submodule
         run: |
           git clone --recursive https://github.com/leejet/stable-diffusion.cpp app/src/main/cpp/sdcpp
+          echo "### C++ API Signature in Header" >> $GITHUB_STEP_SUMMARY
+          echo '```c' >> $GITHUB_STEP_SUMMARY
+          grep -n -C 2 "generate_image" app/src/main/cpp/sdcpp/include/stable-diffusion.h >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Compile Titan APK
         run: |
@@ -45,9 +49,9 @@ jobs:
           gradle assembleRelease --no-daemon 2>&1 | tee build.log
           EXIT_CODE=${PIPESTATUS[0]}
           if [ $EXIT_CODE -ne 0 ]; then
-            echo "### ❌ Build Error Summary" >> $GITHUB_STEP_SUMMARY
+            echo "### ❌ Build Error & Compiler Notes" >> $GITHUB_STEP_SUMMARY
             echo '```text' >> $GITHUB_STEP_SUMMARY
-            awk '/\* What went wrong:/,/\* Try:/ { if (!/\* Try:/ && !/^[[:space:]]*at /) print }' build.log | grep -E "Error|error|failed|What went wrong" | head -n 10 >> $GITHUB_STEP_SUMMARY
+            awk '/\* What went wrong:/,/\* Try:/ { if (!/\* Try:/ && !/^[[:space:]]*at /) print }' build.log | head -n 35 >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             exit $EXIT_CODE
           fi

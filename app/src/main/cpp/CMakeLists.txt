@@ -35,8 +35,8 @@ find_library(android-lib android)
 find_library(vulkan-lib vulkan)
 
 target_include_directories(titan_jni PRIVATE
-    sdcpp/
     sdcpp/include
+    sdcpp/
 )
 
 target_link_libraries(titan_jni
