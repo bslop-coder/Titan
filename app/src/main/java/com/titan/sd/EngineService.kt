@@ -20,6 +20,6 @@ object EngineService {
         prompt: String, negPrompt: String, initImg: String,
         width: Int, height: Int, steps: Int, cfg: Float,
         tiledVae: Boolean, tileW: Int, tileH: Int, tileOverlap: Int,
-        useGpu: Boolean, outPath: String
+        backendMode: Int, outPath: String
     ): Boolean
 }

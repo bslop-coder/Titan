@@ -78,7 +78,7 @@ Java_com_titan_sd_EngineService_runGeneration(
     jstring j_prompt, jstring j_neg_prompt, jstring j_init_img,
     jint width, jint height, jint steps, jfloat cfg,
     jboolean tiled_vae, jint tile_w, jint tile_h, jint tile_overlap,
-    jboolean use_gpu, jstring j_out_path
+    jint backend_mode, jstring j_out_path
 ) {
     const char* dit = env->GetStringUTFChars(j_dit_path, nullptr);
     const char* vae = env->GetStringUTFChars(j_vae_path, nullptr);
@@ -102,11 +102,20 @@ Java_com_titan_sd_EngineService_runGeneration(
         ctx_params.vae_path = vae;
         ctx_params.llm_path = llm;
         ctx_params.n_threads = 6;
-        ctx_params.diffusion_flash_attn = true;
-        ctx_params.flash_attn_mode = "on";
-        ctx_params.conv_direct_mode = "auto";
-        ctx_params.backend = use_gpu ? "vulkan0" : "cpu";
-        ctx_params.params_backend = use_gpu ? "vulkan0" : "cpu";
+
+        ctx_params.diffusion_flash_attn = false;
+        ctx_params.flash_attn_mode = "off";
+
+        if (backend_mode == 0) {
+            ctx_params.backend = "cpu";
+            ctx_params.params_backend = "cpu";
+        } else if (backend_mode == 1) {
+            ctx_params.backend = "diffusion=vulkan0,te=cpu,vae=cpu";
+            ctx_params.params_backend = "diffusion=vulkan0,te=cpu,vae=cpu";
+        } else {
+            ctx_params.backend = "vulkan0";
+            ctx_params.params_backend = "vulkan0";
+        }
 
         sd_ctx_t* ctx = new_sd_ctx(&ctx_params);
         if (!ctx) {

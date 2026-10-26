@@ -118,7 +118,7 @@ fun TitanMainScreen(context: Context) {
     var ditPath by remember { mutableStateOf("/sdcard/SDA/anima-turbo-v1.1-Q4_0.gguf") }
     var vaePath by remember { mutableStateOf("/sdcard/SDA/qwen_image_vae.safetensors") }
     var llmPath by remember { mutableStateOf("/sdcard/SDA/Qwen3-0.6B-Base.Q8_0.gguf") }
-    var useGpu by remember { mutableStateOf(true) }
+    var backendMode by remember { mutableIntStateOf(1) }
     var tiledVae by remember { mutableStateOf(true) }
     var width by remember { mutableStateOf(768f) }
     var height by remember { mutableStateOf(768f) }
@@ -212,7 +212,7 @@ fun TitanMainScreen(context: Context) {
                                 prompt, negPrompt, "",
                                 width.toInt(), height.toInt(), steps.toInt(), cfg,
                                 tiledVae, 512, 512, 128,
-                                useGpu, outPath
+                                backendMode, outPath
                             )
 
                             if (success) {
@@ -272,10 +272,20 @@ fun TitanMainScreen(context: Context) {
             ) {
                 Text("Titan Settings", style = MaterialTheme.typography.titleLarge)
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Backend: ${if (useGpu) "Vulkan GPU" else "CPU"}")
-                    Spacer(Modifier.weight(1f))
-                    Switch(checked = useGpu, onCheckedChange = { useGpu = it })
+                Text("Compute Engine", style = MaterialTheme.typography.titleMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = backendMode == 1, onClick = { backendMode = 1 })
+                        Text("Vulkan Hybrid (GPU DiT + CPU Text/VAE) - Recommended")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = backendMode == 0, onClick = { backendMode = 0 })
+                        Text("CPU Only (ARM NEON Dot-Product)")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = backendMode == 2, onClick = { backendMode = 2 })
+                        Text("Vulkan Full (All on GPU)")
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
