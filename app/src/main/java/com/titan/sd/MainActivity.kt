@@ -10,9 +10,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
+import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -21,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -109,6 +113,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+fun resolveFilePath(uri: Uri): String {
+    try {
+        if (DocumentsContract.isDocumentUri(null, uri) || uri.authority == "com.android.externalstorage.documents") {
+            val docId = DocumentsContract.getDocumentId(uri)
+            val split = docId.split(":")
+            if (split.size >= 2) {
+                val type = split[0]
+                if ("primary".equals(type, ignoreCase = true)) {
+                    return "/sdcard/${split[1]}"
+                } else {
+                    return "/storage/$type/${split[1]}"
+                }
+            }
+        }
+    } catch (_: Exception) {}
+    return uri.path?.replace("/document/primary:", "/sdcard/") ?: ""
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TitanMainScreen(context: Context, engine: EngineService?) {
@@ -132,18 +154,28 @@ fun TitanMainScreen(context: Context, engine: EngineService?) {
         }
     }
 
-    var ditPath by remember { mutableStateOf("/sdcard/Models/anima-base.gguf") }
-    var vaePath by remember { mutableStateOf("/sdcard/Models/qwen_vae.safetensors") }
-    var llmPath by remember { mutableStateOf("/sdcard/Models/qwen3_06b.safetensors") }
-    var useGpu by remember { mutableStateOf(true) }
+    var ditPath by remember { mutableStateOf("/sdcard/SDA/anima-turbo-v1.1-Q4_0.gguf") }
+    var vaePath by remember { mutableStateOf("/sdcard/SDA/qwen_image_vae.safetensors") }
+    var llmPath by remember { mutableStateOf("/sdcard/SDA/Qwen3-0.6B-Base.Q8_0.gguf") }
+    var useGpu by remember { mutableStateOf(false) }
     var tiledVae by remember { mutableStateOf(true) }
     var width by remember { mutableStateOf(768f) }
     var height by remember { mutableStateOf(768f) }
-    var steps by remember { mutableStateOf(20f) }
-    var cfg by remember { mutableStateOf(4.0f) }
+    var steps by remember { mutableStateOf(8f) }
+    var cfg by remember { mutableStateOf(1.0f) }
 
     val loraSlots = remember { mutableStateListOf("", "", "", "") }
     val loraStrengths = remember { mutableStateListOf(1.0f, 1.0f, 1.0f, 1.0f) }
+
+    val ditPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { ditPath = resolveFilePath(it) }
+    }
+    val vaePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { vaePath = resolveFilePath(it) }
+    }
+    val llmPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { llmPath = resolveFilePath(it) }
+    }
 
     Scaffold(
         topBar = {
@@ -189,6 +221,23 @@ fun TitanMainScreen(context: Context, engine: EngineService?) {
             Button(
                 onClick = {
                     if (isGenerating) return@Button
+
+                    if (!File(ditPath).exists()) {
+                        crashLogContent = "DiT Model file not found at:\n$ditPath\n\nPlease check path in Settings or tap 📁 Browse."
+                        showCrashLog = true
+                        return@Button
+                    }
+                    if (!File(vaePath).exists()) {
+                        crashLogContent = "VAE file not found at:\n$vaePath\n\nPlease check path in Settings or tap 📁 Browse."
+                        showCrashLog = true
+                        return@Button
+                    }
+                    if (!File(llmPath).exists()) {
+                        crashLogContent = "Text Encoder file not found at:\n$llmPath\n\nPlease check path in Settings or tap 📁 Browse."
+                        showCrashLog = true
+                        return@Button
+                    }
+
                     isGenerating = true
                     val outDir = File("/sdcard/Pictures/Titan")
                     if (!outDir.exists()) outDir.mkdirs()
@@ -208,7 +257,8 @@ fun TitanMainScreen(context: Context, engine: EngineService?) {
                             if (success) {
                                 generatedImagePath = outPath
                             } else {
-                                crashLogContent = engine?.getEngineLogs() ?: "Engine halted unexpectedly."
+                                val logs = engine?.getEngineLogs()?.trim() ?: ""
+                                crashLogContent = if (logs.isNotEmpty()) logs else "Engine halted without producing logs."
                                 showCrashLog = true
                             }
                         } catch (e: Exception) {
@@ -286,9 +336,42 @@ fun TitanMainScreen(context: Context, engine: EngineService?) {
                 Slider(value = cfg, onValueChange = { cfg = it }, valueRange = 1.0f..15.0f)
 
                 Text("Model Paths", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(value = ditPath, onValueChange = { ditPath = it }, label = { Text("DiT Model Path") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = vaePath, onValueChange = { vaePath = it }, label = { Text("VAE Path") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = llmPath, onValueChange = { llmPath = it }, label = { Text("Text Encoder Path") }, modifier = Modifier.fillMaxWidth())
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = ditPath,
+                        onValueChange = { ditPath = it },
+                        label = { Text("DiT Model Path") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { ditPicker.launch(arrayOf("*/*")) }) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = "Browse DiT")
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = vaePath,
+                        onValueChange = { vaePath = it },
+                        label = { Text("VAE Path") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { vaePicker.launch(arrayOf("*/*")) }) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = "Browse VAE")
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = llmPath,
+                        onValueChange = { llmPath = it },
+                        label = { Text("Text Encoder Path") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { llmPicker.launch(arrayOf("*/*")) }) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = "Browse LLM")
+                    }
+                }
 
                 Text("LoRA Slots", style = MaterialTheme.typography.titleMedium)
                 for (i in 0 until 4) {
@@ -307,7 +390,7 @@ fun TitanMainScreen(context: Context, engine: EngineService?) {
     if (showCrashLog) {
         AlertDialog(
             onDismissRequest = { showCrashLog = false },
-            title = { Text("Diagnostics & Crash Details") },
+            title = { Text("Diagnostics & Engine Details") },
             text = {
                 Text(crashLogContent, modifier = Modifier.verticalScroll(rememberScrollState()))
             },

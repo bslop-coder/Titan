@@ -7,38 +7,36 @@
 #include <android/log.h>
 #include "stable-diffusion.h"
 
-#define TAG "TITAN_ENGINE"
+#define TAG "TITAN_NATIVE"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-static int pipe_stdout[2];
-static pthread_t log_thread;
 static std::string g_log_buffer;
+static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void* log_capture_func(void*) {
-    ssize_t bytes_read;
-    char buf[1024];
-    while ((bytes_read = read(pipe_stdout[0], buf, sizeof(buf) - 1)) > 0) {
-        buf[bytes_read] = '\0';
-        g_log_buffer += buf;
+static void titan_log_callback(sd_log_level_t level, const char* text, void* data) {
+    if (text) {
+        pthread_mutex_lock(&g_log_mutex);
+        g_log_buffer += text;
         if (g_log_buffer.size() > 65536) {
             g_log_buffer.erase(0, g_log_buffer.size() - 65536);
         }
+        pthread_mutex_unlock(&g_log_mutex);
+        __android_log_print(ANDROID_LOG_INFO, TAG, "%s", text);
     }
-    return nullptr;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_titan_sd_EngineService_initLogging(JNIEnv* env, jobject thiz) {
-    pipe(pipe_stdout);
-    dup2(pipe_stdout[1], STDOUT_FILENO);
-    dup2(pipe_stdout[1], STDERR_FILENO);
-    pthread_create(&log_thread, nullptr, log_capture_func, nullptr);
+    sd_set_log_callback(titan_log_callback, nullptr);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_titan_sd_EngineService_getEngineLogs(JNIEnv* env, jobject thiz) {
-    return env->NewStringUTF(g_log_buffer.c_str());
+    pthread_mutex_lock(&g_log_mutex);
+    jstring res = env->NewStringUTF(g_log_buffer.c_str());
+    pthread_mutex_unlock(&g_log_mutex);
+    return res;
 }
 
 static void save_bmp(const char* filename, uint32_t width, uint32_t height, uint32_t channels, const uint8_t* data) {
@@ -87,6 +85,10 @@ Java_com_titan_sd_EngineService_runGeneration(
     const char* prompt = env->GetStringUTFChars(j_prompt, nullptr);
     const char* neg_prompt = env->GetStringUTFChars(j_neg_prompt, nullptr);
     const char* out_path = env->GetStringUTFChars(j_out_path, nullptr);
+
+    pthread_mutex_lock(&g_log_mutex);
+    g_log_buffer.clear();
+    pthread_mutex_unlock(&g_log_mutex);
 
     sd_ctx_params_t ctx_params;
     sd_ctx_params_init(&ctx_params);
