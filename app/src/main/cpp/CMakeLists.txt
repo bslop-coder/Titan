@@ -24,6 +24,14 @@ if (EXISTS "/tmp/vulkan-headers/include")
     set(Vulkan_INCLUDE_DIR "/tmp/vulkan-headers/include" CACHE PATH "" FORCE)
 endif()
 
+if (EXISTS "/tmp/spirv-headers/install/include")
+    include_directories(SYSTEM "/tmp/spirv-headers/install/include")
+endif()
+
+if (EXISTS "/tmp/spirv-headers/include")
+    include_directories(SYSTEM "/tmp/spirv-headers/include")
+endif()
+
 add_subdirectory(sdcpp)
 
 add_library(titan_jni SHARED

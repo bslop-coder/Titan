@@ -20,6 +20,7 @@ jobs:
           git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/spirv-headers
           cmake -S /tmp/spirv-headers -B /tmp/spirv-headers/build -DCMAKE_INSTALL_PREFIX=/tmp/spirv-headers/install
           cmake --install /tmp/spirv-headers/build
+          cp -r /tmp/spirv-headers/include/* /tmp/vulkan-headers/include/
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -38,10 +39,6 @@ jobs:
       - name: Fetch stable-diffusion.cpp submodule
         run: |
           git clone --recursive https://github.com/leejet/stable-diffusion.cpp app/src/main/cpp/sdcpp
-          echo "### sd_image_generation_result Definition in Header" >> $GITHUB_STEP_SUMMARY
-          echo '```c' >> $GITHUB_STEP_SUMMARY
-          grep -n -C 6 "sd_image_generation_result" app/src/main/cpp/sdcpp/include/stable-diffusion.h >> $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Compile Titan APK
         run: |
