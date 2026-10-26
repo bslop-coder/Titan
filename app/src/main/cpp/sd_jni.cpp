@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <unistd.h>
 #include <pthread.h>
+#include <exception>
 #include <android/log.h>
 #include "stable-diffusion.h"
 
@@ -92,52 +93,63 @@ Java_com_titan_sd_EngineService_runGeneration(
 
     sd_set_log_callback(titan_log_callback, nullptr);
 
-    sd_ctx_params_t ctx_params;
-    sd_ctx_params_init(&ctx_params);
-    ctx_params.diffusion_model_path = dit;
-    ctx_params.vae_path = vae;
-    ctx_params.llm_path = llm;
-    ctx_params.n_threads = 4;
-    ctx_params.backend = use_gpu ? "vulkan0" : "cpu";
-
-    sd_ctx_t* ctx = new_sd_ctx(&ctx_params);
-    if (!ctx) {
-        LOGE("Failed to create sd context");
-        env->ReleaseStringUTFChars(j_dit_path, dit);
-        env->ReleaseStringUTFChars(j_vae_path, vae);
-        env->ReleaseStringUTFChars(j_llm_path, llm);
-        env->ReleaseStringUTFChars(j_prompt, prompt);
-        env->ReleaseStringUTFChars(j_neg_prompt, neg_prompt);
-        env->ReleaseStringUTFChars(j_out_path, out_path);
-        return JNI_FALSE;
-    }
-
-    sd_img_gen_params_t gen_params;
-    sd_img_gen_params_init(&gen_params);
-    gen_params.prompt = prompt;
-    gen_params.negative_prompt = neg_prompt;
-    gen_params.width = width;
-    gen_params.height = height;
-    gen_params.sample_params.sample_steps = steps;
-    gen_params.sample_params.guidance.txt_cfg = cfg;
-    gen_params.sample_params.sample_method = EULER_SAMPLE_METHOD;
-    gen_params.seed = -1;
-
-    sd_image_generation_result_t* result = nullptr;
     bool success = false;
 
-    if (generate_image(ctx, &gen_params, &result)) {
-        if (result && result->items && result->count > 0 && result->items[0].image.data) {
-            save_bmp(out_path, result->items[0].image.width, result->items[0].image.height, result->items[0].image.channel, result->items[0].image.data);
-            success = true;
+    try {
+        sd_ctx_params_t ctx_params;
+        sd_ctx_params_init(&ctx_params);
+        ctx_params.diffusion_model_path = dit;
+        ctx_params.vae_path = vae;
+        ctx_params.llm_path = llm;
+        ctx_params.n_threads = 4;
+        ctx_params.backend = use_gpu ? "vulkan0" : "cpu";
+
+        sd_ctx_t* ctx = new_sd_ctx(&ctx_params);
+        if (!ctx) {
+            LOGE("Failed to create sd context");
+            pthread_mutex_lock(&g_log_mutex);
+            if (g_log_buffer.empty()) {
+                g_log_buffer = "Vulkan failed to initialize on this GPU. Reverting to CPU recommended.";
+            }
+            pthread_mutex_unlock(&g_log_mutex);
+        } else {
+            sd_img_gen_params_t gen_params;
+            sd_img_gen_params_init(&gen_params);
+            gen_params.prompt = prompt;
+            gen_params.negative_prompt = neg_prompt;
+            gen_params.width = width;
+            gen_params.height = height;
+            gen_params.sample_params.sample_steps = steps;
+            gen_params.sample_params.guidance.txt_cfg = cfg;
+            gen_params.sample_params.sample_method = EULER_SAMPLE_METHOD;
+            gen_params.seed = -1;
+
+            sd_image_generation_result_t* result = nullptr;
+            if (generate_image(ctx, &gen_params, &result)) {
+                if (result && result->items && result->count > 0 && result->items[0].image.data) {
+                    save_bmp(out_path, result->items[0].image.width, result->items[0].image.height, result->items[0].image.channel, result->items[0].image.data);
+                    success = true;
+                }
+            }
+
+            if (result) {
+                free_sd_image_generation_result(result);
+            }
+            free_sd_ctx(ctx);
         }
+    } catch (const std::exception& e) {
+        LOGE("C++ Exception: %s", e.what());
+        pthread_mutex_lock(&g_log_mutex);
+        g_log_buffer += std::string("\nVulkan Exception: ") + e.what();
+        pthread_mutex_unlock(&g_log_mutex);
+        success = false;
+    } catch (...) {
+        LOGE("Unknown C++ native crash caught");
+        pthread_mutex_lock(&g_log_mutex);
+        g_log_buffer += "\nUnknown hardware driver crash caught.";
+        pthread_mutex_unlock(&g_log_mutex);
+        success = false;
     }
-
-    if (result) {
-        free_sd_image_generation_result(result);
-    }
-
-    free_sd_ctx(ctx);
 
     env->ReleaseStringUTFChars(j_dit_path, dit);
     env->ReleaseStringUTFChars(j_vae_path, vae);

@@ -118,7 +118,7 @@ fun TitanMainScreen(context: Context) {
     var ditPath by remember { mutableStateOf("/sdcard/SDA/anima-turbo-v1.1-Q4_0.gguf") }
     var vaePath by remember { mutableStateOf("/sdcard/SDA/qwen_image_vae.safetensors") }
     var llmPath by remember { mutableStateOf("/sdcard/SDA/Qwen3-0.6B-Base.Q8_0.gguf") }
-    var useGpu by remember { mutableStateOf(false) }
+    var useGpu by remember { mutableStateOf(true) }
     var tiledVae by remember { mutableStateOf(true) }
     var width by remember { mutableStateOf(768f) }
     var height by remember { mutableStateOf(768f) }

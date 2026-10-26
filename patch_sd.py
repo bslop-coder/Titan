@@ -1,21 +1,26 @@
 import os
 
-path_buf = "app/src/main/cpp/sdcpp/ggml/src/ggml-vulkan/ggml-vulkan-buffers.cpp"
+vk_dir = "app/src/main/cpp/sdcpp/ggml/src/ggml-vulkan"
+
+path_buf = os.path.join(vk_dir, "ggml-vulkan-buffers.cpp")
 if os.path.exists(path_buf):
     with open(path_buf, "r") as f:
         t = f.read()
-    target_buf = "return std::aligned_alloc(align, size);"
-    patch_buf = "void* ptr = nullptr; if (posix_memalign(&ptr, align, size) == 0) return ptr; return nullptr;"
-    if target_buf in t:
-        t = t.replace(target_buf, patch_buf)
-        with open(path_buf, "w") as f:
-            f.write(t)
-        print("Patched aligned_alloc with posix_memalign")
+    t = t.replace("return std::aligned_alloc(align, size);", "void* ptr = nullptr; if (posix_memalign(&ptr, align, size) == 0) return ptr; return nullptr;")
+    t = t.replace("if (device->buffer_device_address)", "if (false)")
+    t = t.replace("if (device.buffer_device_address)", "if (false)")
+    with open(path_buf, "w") as f:
+        f.write(t)
+    print("Patched ggml-vulkan-buffers.cpp")
 
-path_vk = "app/src/main/cpp/sdcpp/ggml/src/ggml-vulkan/ggml-vulkan.cpp"
+path_vk = os.path.join(vk_dir, "ggml-vulkan.cpp")
 if os.path.exists(path_vk):
     with open(path_vk, "r") as f:
         t_vk = f.read()
+
+    t_vk = t_vk.replace("device->buffer_device_address = true;", "device->buffer_device_address = false;")
+    t_vk = t_vk.replace("buffer_device_address = true", "buffer_device_address = false")
+
     target_vk = "h->queue = device->device.getQueue2(queue_info2);"
     patch_vk = """h->queue = device->device.getQueue2(queue_info2);
     if (!h->queue) {
@@ -23,6 +28,7 @@ if os.path.exists(path_vk):
     }"""
     if target_vk in t_vk:
         t_vk = t_vk.replace(target_vk, patch_vk)
-        with open(path_vk, "w") as f:
-            f.write(t_vk)
-        print("Patched Mali vkGetDeviceQueue2 fallback")
+
+    with open(path_vk, "w") as f:
+        f.write(t_vk)
+    print("Patched ggml-vulkan.cpp")
