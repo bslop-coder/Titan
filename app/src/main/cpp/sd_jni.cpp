@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <unistd.h>
 #include <pthread.h>
+#include <chrono>
 #include <exception>
 #include <android/log.h>
 #include "stable-diffusion.h"
@@ -14,6 +15,12 @@
 
 static std::string g_log_buffer;
 static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static sd_ctx_t* g_sd_ctx = nullptr;
+static std::string g_cached_dit;
+static std::string g_cached_vae;
+static std::string g_cached_llm;
+static int g_cached_backend_mode = -999;
 
 static void titan_log_callback(sd_log_level_t level, const char* text, void* data) {
     if (text) {
@@ -96,36 +103,68 @@ Java_com_titan_sd_EngineService_runGeneration(
     bool success = false;
 
     try {
-        sd_ctx_params_t ctx_params;
-        sd_ctx_params_init(&ctx_params);
-        ctx_params.diffusion_model_path = dit;
-        ctx_params.vae_path = vae;
-        ctx_params.llm_path = llm;
-        ctx_params.n_threads = 6;
+        bool needs_reload = (g_sd_ctx == nullptr) ||
+                            (g_cached_dit != dit) ||
+                            (g_cached_vae != vae) ||
+                            (g_cached_llm != llm) ||
+                            (g_cached_backend_mode != backend_mode);
 
-        ctx_params.diffusion_flash_attn = false;
-        ctx_params.flash_attn_mode = "off";
+        if (needs_reload) {
+            if (g_sd_ctx != nullptr) {
+                free_sd_ctx(g_sd_ctx);
+                g_sd_ctx = nullptr;
+            }
 
-        if (backend_mode == 0) {
-            ctx_params.backend = "cpu";
-            ctx_params.params_backend = "cpu";
-        } else if (backend_mode == 1) {
-            ctx_params.backend = "diffusion=vulkan0,te=cpu,vae=cpu";
-            ctx_params.params_backend = "diffusion=vulkan0,te=cpu,vae=cpu";
+            auto t_load_start = std::chrono::high_resolution_clock::now();
+
+            sd_ctx_params_t ctx_params;
+            sd_ctx_params_init(&ctx_params);
+            ctx_params.diffusion_model_path = dit;
+            ctx_params.vae_path = vae;
+            ctx_params.llm_path = llm;
+            ctx_params.n_threads = 6;
+            ctx_params.diffusion_flash_attn = false;
+            ctx_params.flash_attn_mode = "off";
+
+            if (backend_mode == 0) {
+                ctx_params.backend = "cpu";
+                ctx_params.params_backend = "cpu";
+            } else if (backend_mode == 1) {
+                ctx_params.backend = "diffusion=vulkan0,te=cpu,vae=cpu";
+                ctx_params.params_backend = "diffusion=vulkan0,te=cpu,vae=cpu";
+            } else {
+                ctx_params.backend = "vulkan0";
+                ctx_params.params_backend = "vulkan0";
+            }
+
+            g_sd_ctx = new_sd_ctx(&ctx_params);
+
+            auto t_load_end = std::chrono::high_resolution_clock::now();
+            double load_duration = std::chrono::duration<double>(t_load_end - t_load_start).count();
+
+            if (!g_sd_ctx) {
+                LOGE("Failed to create sd context");
+                pthread_mutex_lock(&g_log_mutex);
+                g_log_buffer += "\nFailed to initialize model context.";
+                pthread_mutex_unlock(&g_log_mutex);
+            } else {
+                g_cached_dit = dit;
+                g_cached_vae = vae;
+                g_cached_llm = llm;
+                g_cached_backend_mode = backend_mode;
+                pthread_mutex_lock(&g_log_mutex);
+                g_log_buffer += "\n[Model Loaded into memory in " + std::to_string(load_duration) + "s]\n";
+                pthread_mutex_unlock(&g_log_mutex);
+            }
         } else {
-            ctx_params.backend = "vulkan0";
-            ctx_params.params_backend = "vulkan0";
+            pthread_mutex_lock(&g_log_mutex);
+            g_log_buffer += "\n[Using already-loaded model from memory]\n";
+            pthread_mutex_unlock(&g_log_mutex);
         }
 
-        sd_ctx_t* ctx = new_sd_ctx(&ctx_params);
-        if (!ctx) {
-            LOGE("Failed to create sd context");
-            pthread_mutex_lock(&g_log_mutex);
-            if (g_log_buffer.empty()) {
-                g_log_buffer = "Engine initialization failed to acquire hardware device.";
-            }
-            pthread_mutex_unlock(&g_log_mutex);
-        } else {
+        if (g_sd_ctx != nullptr) {
+            auto t_gen_start = std::chrono::high_resolution_clock::now();
+
             sd_img_gen_params_t gen_params;
             sd_img_gen_params_init(&gen_params);
             gen_params.prompt = prompt;
@@ -138,17 +177,23 @@ Java_com_titan_sd_EngineService_runGeneration(
             gen_params.seed = -1;
 
             sd_image_generation_result_t* result = nullptr;
-            if (generate_image(ctx, &gen_params, &result)) {
+            if (generate_image(g_sd_ctx, &gen_params, &result)) {
                 if (result && result->items && result->count > 0 && result->items[0].image.data) {
                     save_bmp(out_path, result->items[0].image.width, result->items[0].image.height, result->items[0].image.channel, result->items[0].image.data);
                     success = true;
                 }
             }
 
+            auto t_gen_end = std::chrono::high_resolution_clock::now();
+            double gen_duration = std::chrono::duration<double>(t_gen_end - t_gen_start).count();
+
+            pthread_mutex_lock(&g_log_mutex);
+            g_log_buffer += "\n[Inference Time: " + std::to_string(gen_duration) + "s (" + std::to_string(gen_duration / steps) + "s/step)]\n";
+            pthread_mutex_unlock(&g_log_mutex);
+
             if (result) {
                 free_sd_image_generation_result(result);
             }
-            free_sd_ctx(ctx);
         }
     } catch (const std::exception& e) {
         LOGE("C++ Exception: %s", e.what());
