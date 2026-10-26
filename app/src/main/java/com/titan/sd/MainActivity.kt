@@ -5,8 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.IBinder
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -26,6 +30,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
     private var engineService: EngineService? = null
@@ -33,9 +40,13 @@ class MainActivity : ComponentActivity() {
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as EngineService.LocalBinder
-            engineService = binder.getService()
-            isBound = true
+            try {
+                val binder = service as EngineService.LocalBinder
+                engineService = binder.getService()
+                isBound = true
+            } catch (t: Throwable) {
+                saveCrashLog(t)
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -46,19 +57,53 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        bindService(Intent(this, EngineService::class.java), connection, Context.BIND_AUTO_CREATE)
+        try {
+            bindService(Intent(this, EngineService::class.java), connection, Context.BIND_AUTO_CREATE)
+        } catch (t: Throwable) {
+            saveCrashLog(t)
+        }
     }
 
     override fun onStop() {
         super.onStop()
-        if (isBound) unbindService(connection)
+        if (isBound) {
+            unbindService(connection)
+            isBound = false
+        }
+    }
+
+    private fun saveCrashLog(t: Throwable) {
+        val sw = StringWriter()
+        t.printStackTrace(PrintWriter(sw))
+        try {
+            File(filesDir, "startup_crash.txt").writeText(sw.toString())
+        } catch (_: Exception) {}
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
+            saveCrashLog(throwable)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(intent)
+                }
+            }
+        }
+
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFFF9800))) {
-                TitanMainScreen(engineService)
+                TitanMainScreen(this, engineService)
             }
         }
     }
@@ -66,15 +111,27 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TitanMainScreen(engine: EngineService?) {
+fun TitanMainScreen(context: Context, engine: EngineService?) {
     var showSettings by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
+    var isGenerating by remember { mutableStateOf(false) }
     var prompt by remember { mutableStateOf("") }
     var negPrompt by remember { mutableStateOf("") }
     var generatedImagePath by remember { mutableStateOf<String?>(null) }
     var crashLogContent by remember { mutableStateOf("") }
 
-    // Inference Settings
+    val startupCrashFile = remember { File(context.filesDir, "startup_crash.txt") }
+    LaunchedEffect(Unit) {
+        if (startupCrashFile.exists()) {
+            crashLogContent = startupCrashFile.readText()
+            showCrashLog = true
+            startupCrashFile.delete()
+        } else if (EngineService.libraryError != null) {
+            crashLogContent = "Native library load error: ${EngineService.libraryError}"
+            showCrashLog = true
+        }
+    }
+
     var ditPath by remember { mutableStateOf("/sdcard/Models/anima-base.gguf") }
     var vaePath by remember { mutableStateOf("/sdcard/Models/qwen_vae.safetensors") }
     var llmPath by remember { mutableStateOf("/sdcard/Models/qwen3_06b.safetensors") }
@@ -93,10 +150,10 @@ fun TitanMainScreen(engine: EngineService?) {
             TopAppBar(
                 title = { Text("Titan") },
                 actions = {
-                    IconButton(onClick = { /* Pick Init Image */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Filled.Add, contentDescription = "Add Image")
                     }
-                    IconButton(onClick = { /* Open Gallery */ }) {
+                    IconButton(onClick = { }) {
                         Icon(Icons.Filled.Collections, contentDescription = "Gallery")
                     }
                     IconButton(onClick = { showSettings = true }) {
@@ -131,29 +188,41 @@ fun TitanMainScreen(engine: EngineService?) {
 
             Button(
                 onClick = {
+                    if (isGenerating) return@Button
+                    isGenerating = true
                     val outDir = File("/sdcard/Pictures/Titan")
                     if (!outDir.exists()) outDir.mkdirs()
-                    val outPath = "/sdcard/Pictures/Titan/Titan_${System.currentTimeMillis()}.png"
+                    val outPath = "/sdcard/Pictures/Titan/Titan_${System.currentTimeMillis()}.bmp"
 
-                    val success = engine?.runGeneration(
-                        ditPath, vaePath, llmPath,
-                        loraSlots.toTypedArray(), loraStrengths.toFloatArray(),
-                        prompt, negPrompt, "",
-                        width.toInt(), height.toInt(), steps.toInt(), cfg,
-                        tiledVae, 512, 512, 128,
-                        useGpu, outPath
-                    ) ?: false
+                    thread {
+                        try {
+                            val success = engine?.runGeneration(
+                                ditPath, vaePath, llmPath,
+                                loraSlots.toTypedArray(), loraStrengths.toFloatArray(),
+                                prompt, negPrompt, "",
+                                width.toInt(), height.toInt(), steps.toInt(), cfg,
+                                tiledVae, 512, 512, 128,
+                                useGpu, outPath
+                            ) ?: false
 
-                    if (success) {
-                        generatedImagePath = outPath
-                    } else {
-                        crashLogContent = engine?.getEngineLogs() ?: "Engine halted unexpectedly."
-                        showCrashLog = true
+                            if (success) {
+                                generatedImagePath = outPath
+                            } else {
+                                crashLogContent = engine?.getEngineLogs() ?: "Engine halted unexpectedly."
+                                showCrashLog = true
+                            }
+                        } catch (e: Exception) {
+                            crashLogContent = e.toString()
+                            showCrashLog = true
+                        } finally {
+                            isGenerating = false
+                        }
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isGenerating
             ) {
-                Text("Generate")
+                Text(if (isGenerating) "Generating..." else "Generate")
             }
 
             Box(
@@ -163,16 +232,20 @@ fun TitanMainScreen(engine: EngineService?) {
                     .background(Color(0xFF1E1E1E)),
                 contentAlignment = Alignment.Center
             ) {
-                generatedImagePath?.let { path ->
-                    val bitmap = BitmapFactory.decodeFile(path)
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "Output Image",
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                } ?: Text("Generated image will appear here", color = Color.Gray)
+                if (isGenerating) {
+                    CircularProgressIndicator(color = Color(0xFFFF9800))
+                } else {
+                    generatedImagePath?.let { path ->
+                        val bitmap = BitmapFactory.decodeFile(path)
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Output Image",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } ?: Text("Generated image will appear here", color = Color.Gray)
+                }
             }
         }
     }
@@ -234,7 +307,7 @@ fun TitanMainScreen(engine: EngineService?) {
     if (showCrashLog) {
         AlertDialog(
             onDismissRequest = { showCrashLog = false },
-            title = { Text("Crash & Engine Diagnostics") },
+            title = { Text("Diagnostics & Crash Details") },
             text = {
                 Text(crashLogContent, modifier = Modifier.verticalScroll(rememberScrollState()))
             },

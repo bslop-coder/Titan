@@ -19,7 +19,6 @@
 
         <service
             android:name=".EngineService"
-            android:process=":infer_engine"
             android:exported="false" />
     </application>
 </manifest>

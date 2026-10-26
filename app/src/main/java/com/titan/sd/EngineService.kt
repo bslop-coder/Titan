@@ -9,8 +9,13 @@ class EngineService : Service() {
     private val binder = LocalBinder()
 
     companion object {
+        var libraryError: String? = null
         init {
-            System.loadLibrary("titan_jni")
+            try {
+                System.loadLibrary("titan_jni")
+            } catch (t: Throwable) {
+                libraryError = t.toString()
+            }
         }
     }
 
@@ -31,7 +36,11 @@ class EngineService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        initLogging()
+        if (libraryError == null) {
+            try {
+                initLogging()
+            } catch (_: Throwable) {}
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
