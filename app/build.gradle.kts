@@ -20,7 +20,8 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags("-std=c++17")
+                cppFlags("-std=c++17 -O3 -march=armv8.2-a+dotprod+fp16")
+                cFlags("-O3 -march=armv8.2-a+dotprod+fp16")
                 arguments(
                     "-DSD_VULKAN=ON",
                     "-DSD_WEBP=OFF",
@@ -28,6 +29,7 @@ android {
                     "-DSD_USE_SYSTEM_WEBP=ON",
                     "-DSD_BUILD_EXAMPLES=OFF",
                     "-DANDROID_STL=c++_shared",
+                    "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16",
                     "-DSPIRV-Headers_DIR=/tmp/spirv-headers/install/share/cmake/SPIRV-Headers",
                     "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH",
                     "-DVulkan_INCLUDE_DIR=/tmp/vulkan-headers/include"

@@ -101,15 +101,19 @@ Java_com_titan_sd_EngineService_runGeneration(
         ctx_params.diffusion_model_path = dit;
         ctx_params.vae_path = vae;
         ctx_params.llm_path = llm;
-        ctx_params.n_threads = 4;
+        ctx_params.n_threads = 6;
+        ctx_params.diffusion_flash_attn = true;
+        ctx_params.flash_attn_mode = "on";
+        ctx_params.conv_direct_mode = "auto";
         ctx_params.backend = use_gpu ? "vulkan0" : "cpu";
+        ctx_params.params_backend = use_gpu ? "vulkan0" : "cpu";
 
         sd_ctx_t* ctx = new_sd_ctx(&ctx_params);
         if (!ctx) {
             LOGE("Failed to create sd context");
             pthread_mutex_lock(&g_log_mutex);
             if (g_log_buffer.empty()) {
-                g_log_buffer = "Vulkan failed to initialize on this GPU. Reverting to CPU recommended.";
+                g_log_buffer = "Engine initialization failed to acquire hardware device.";
             }
             pthread_mutex_unlock(&g_log_mutex);
         } else {
@@ -140,13 +144,13 @@ Java_com_titan_sd_EngineService_runGeneration(
     } catch (const std::exception& e) {
         LOGE("C++ Exception: %s", e.what());
         pthread_mutex_lock(&g_log_mutex);
-        g_log_buffer += std::string("\nVulkan Exception: ") + e.what();
+        g_log_buffer += std::string("\nHardware Exception: ") + e.what();
         pthread_mutex_unlock(&g_log_mutex);
         success = false;
     } catch (...) {
-        LOGE("Unknown C++ native crash caught");
+        LOGE("Unknown hardware exception caught");
         pthread_mutex_lock(&g_log_mutex);
-        g_log_buffer += "\nUnknown hardware driver crash caught.";
+        g_log_buffer += "\nUnknown hardware driver exception caught.";
         pthread_mutex_unlock(&g_log_mutex);
         success = false;
     }
