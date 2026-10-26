@@ -90,6 +90,8 @@ Java_com_titan_sd_EngineService_runGeneration(
     g_log_buffer.clear();
     pthread_mutex_unlock(&g_log_mutex);
 
+    sd_set_log_callback(titan_log_callback, nullptr);
+
     sd_ctx_params_t ctx_params;
     sd_ctx_params_init(&ctx_params);
     ctx_params.diffusion_model_path = dit;

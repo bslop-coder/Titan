@@ -1,15 +1,12 @@
 package com.titan.sd
 
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.IBinder
 import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -39,42 +36,6 @@ import java.io.StringWriter
 import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
-    private var engineService: EngineService? = null
-    private var isBound = false
-
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            try {
-                val binder = service as EngineService.LocalBinder
-                engineService = binder.getService()
-                isBound = true
-            } catch (t: Throwable) {
-                saveCrashLog(t)
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            engineService = null
-            isBound = false
-        }
-    }
-
-    override fun onStart() {
-        super.onStart()
-        try {
-            bindService(Intent(this, EngineService::class.java), connection, Context.BIND_AUTO_CREATE)
-        } catch (t: Throwable) {
-            saveCrashLog(t)
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (isBound) {
-            unbindService(connection)
-            isBound = false
-        }
-    }
 
     private fun saveCrashLog(t: Throwable) {
         val sw = StringWriter()
@@ -107,7 +68,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFFF9800))) {
-                TitanMainScreen(this, engineService)
+                TitanMainScreen(this)
             }
         }
     }
@@ -133,7 +94,7 @@ fun resolveFilePath(uri: Uri): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TitanMainScreen(context: Context, engine: EngineService?) {
+fun TitanMainScreen(context: Context) {
     var showSettings by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
     var isGenerating by remember { mutableStateOf(false) }
@@ -245,20 +206,20 @@ fun TitanMainScreen(context: Context, engine: EngineService?) {
 
                     thread {
                         try {
-                            val success = engine?.runGeneration(
+                            val success = EngineService.runGeneration(
                                 ditPath, vaePath, llmPath,
                                 loraSlots.toTypedArray(), loraStrengths.toFloatArray(),
                                 prompt, negPrompt, "",
                                 width.toInt(), height.toInt(), steps.toInt(), cfg,
                                 tiledVae, 512, 512, 128,
                                 useGpu, outPath
-                            ) ?: false
+                            )
 
                             if (success) {
                                 generatedImagePath = outPath
                             } else {
-                                val logs = engine?.getEngineLogs()?.trim() ?: ""
-                                crashLogContent = if (logs.isNotEmpty()) logs else "Engine halted without producing logs."
+                                val logs = EngineService.getEngineLogs().trim()
+                                crashLogContent = if (logs.isNotEmpty()) logs else "Engine initialization returned null."
                                 showCrashLog = true
                             }
                         } catch (e: Exception) {
