@@ -123,14 +123,14 @@ Java_com_titan_sd_EngineService_runGeneration(
     bool success = false;
 
     if (generate_image(ctx, &gen_params, &result)) {
-        if (result && result->images && result->num_images > 0 && result->images[0].data) {
-            save_bmp(out_path, result->images[0].width, result->images[0].height, result->images[0].channel, result->images[0].data);
+        if (result && result->items && result->count > 0 && result->items[0].image.data) {
+            save_bmp(out_path, result->items[0].image.width, result->items[0].image.height, result->items[0].image.channel, result->items[0].image.data);
             success = true;
         }
     }
 
     if (result) {
-        sd_image_generation_result_free(result);
+        free_sd_image_generation_result(result);
     }
 
     free_sd_ctx(ctx);
